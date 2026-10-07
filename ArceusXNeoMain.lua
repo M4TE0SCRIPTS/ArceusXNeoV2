@@ -1,7 +1,11 @@
 --[[
-    ArceusXLibraryV2  v3.0  -  (móvil y PC)
-    Desarrollada por MateoScripts
+    ArceusXLibraryV2  v3.0  -  Librería de UI para Roblox (móvil y PC)
 
+    UI:  Window (con subtítulo), Tab, Section, Label, Paragraph, Divider, Button, Toggle,
+         Slider, Dropdown, TextBox, Keybind, ColorPicker, Dialog, Stats HUD, Perfil
+    KeySystem: ventana de key con nota opcional, link para obtener key, key guardada
+    Extras: animaciones, notificaciones por tipo, borde RGB, botón UI RGB,
+            configs (guardar/cargar/borrar), ArceusXLibrary.Utils (utilidades)
 ]]
 
 local Players = game:GetService("Players")
@@ -14,7 +18,7 @@ local StatsService = game:GetService("Stats")
 local CoreGui = game:GetService("CoreGui")
 
 local ArceusXLibrary = {
-    Version = "3.0",
+    Version = "3.1",
     Flags = {},
     Windows = {},
     Utils = {},
@@ -949,6 +953,321 @@ function ArceusXLibrary:GetConfigs()
     return out
 end
 
+
+-- ========== KeySystem ==========
+local function Trim(str)
+    return (tostring(str):gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+function ArceusXLibrary:ClearSavedKey(fileName)
+    fileName = fileName or "ArceusXV2_Key.txt"
+    if not (delfile and isfile) or not isfile(fileName) then return false end
+    return (pcall(delfile, fileName))
+end
+
+--[[
+    local ok = ArceusXLibrary:KeySystem({
+        Title = "Mi Hub", Subtitle = "by mateo",
+        Note = "Texto opcional (puedes omitirlo)",
+        Keys = { "key1", "key2" },   -- o Key = "una-key"
+        KeyUrl = "https://.../keys.txt", -- opcional: una key por línea
+        Validate = function(key) return key == "abc" end, -- opcional
+        GetKeyLink = "https://...",  -- opcional: botón que copia el link
+        SaveKey = true,              -- recuerda la key válida
+        RGBBorder = true, Theme = "Dark", MaxAttempts = 5,
+        OnSuccess = function() end, OnFail = function(n) end, OnClose = function() end,
+    })
+    if not ok then return end
+    Devuelve true si la key fue correcta (la función espera a que el usuario termine).
+]]
+function ArceusXLibrary:KeySystem(opts)
+    opts = opts or {}
+    if opts.Animations ~= nil then self.Animations = opts.Animations end
+
+    local theme = {}
+    for k, v in pairs(Themes[opts.Theme or "Dark"]) do theme[k] = v end
+    for k, v in pairs(opts.CustomTheme or {}) do theme[k] = v end
+
+    local fileName = opts.FileName or "ArceusXV2_Key.txt"
+    local notify = opts.Notify ~= false
+
+    local keys = {}
+    if opts.Key then table.insert(keys, Trim(opts.Key)) end
+    for _, k in ipairs(opts.Keys or {}) do table.insert(keys, Trim(k)) end
+
+    local function check(input)
+        input = Trim(input)
+        if input == "" then return false end
+        if type(opts.Validate) == "function" then
+            local ok, res = pcall(opts.Validate, input)
+            if ok and res then return true end
+        end
+        for _, k in ipairs(keys) do
+            if input == k then return true end
+        end
+        if opts.KeyUrl then
+            local ok, body = pcall(function() return game:HttpGet(opts.KeyUrl) end)
+            if ok and type(body) == "string" then
+                for line in string.gmatch(body, "[^\r\n]+") do
+                    if Trim(line) == input then return true end
+                end
+            end
+        end
+        return false
+    end
+
+    -- Key guardada de una sesión anterior
+    if opts.SaveKey and readfile and isfile and isfile(fileName) then
+        local ok, saved = pcall(readfile, fileName)
+        if ok and saved and check(saved) then
+            if notify then
+                self:Notify({ Title = "Key System", Content = "Key guardada válida", Type = "Success", Theme = theme, Duration = 3 })
+            end
+            Safe(opts.OnSuccess)
+            return true
+        end
+    end
+
+    local green, red = Color3.fromRGB(60, 200, 110), Color3.fromRGB(235, 70, 70)
+    local cr = opts.CornerRadius or 14
+    local hasSub = opts.Subtitle ~= nil and opts.Subtitle ~= ""
+    local hasNote = opts.Note ~= nil and opts.Note ~= ""
+
+    local gui = Make("ScreenGui", {
+        Name = "ArceusXV2_KeySystem", ResetOnSpawn = false, DisplayOrder = 500,
+        IgnoreGuiInset = true, ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+    }, GetParent())
+    local backdrop = Make("TextButton", {
+        Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Color3.new(0, 0, 0),
+        BackgroundTransparency = 1, Text = "", AutoButtonColor = false,
+    }, gui)
+
+    local panel = Make("Frame", {
+        Size = UDim2.new(0, opts.Width or 340, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 0),
+        BackgroundColor3 = theme.Main, BorderSizePixel = 0,
+    }, backdrop)
+    Round(panel, cr)
+    Pad(panel, 16)
+    Make("UIListLayout", { Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder }, panel)
+    local pScale = Make("UIScale", { Scale = 1 }, panel)
+
+    -- Borde (RGB opcional)
+    local stroke = Make("UIStroke", {
+        Thickness = opts.BorderThickness or 2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+        Color = opts.RGBBorder and Color3.new(1, 1, 1) or theme.Accent,
+        Transparency = opts.RGBBorder and 0 or 0.5,
+    }, panel)
+    local grad, rgbConn
+    if opts.RGBBorder then
+        grad = Make("UIGradient", { Color = ToSequence(opts.RGBColors or Rainbow) }, stroke)
+        rgbConn = RunService.RenderStepped:Connect(function(dt)
+            grad.Rotation = (grad.Rotation + dt * (opts.RGBSpeed or 120)) % 360
+        end)
+    end
+
+    -- Cabecera: título + subtítulo + X
+    local header = Make("Frame", {
+        Size = UDim2.new(1, 0, 0, hasSub and 40 or 24), BackgroundTransparency = 1, LayoutOrder = 1,
+    }, panel)
+    Make("TextLabel", {
+        Size = UDim2.new(1, -34, 0, 22), BackgroundTransparency = 1, Text = opts.Title or "Key System",
+        TextColor3 = theme.Text, Font = Enum.Font.GothamBold, TextSize = 18,
+        TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
+    }, header)
+    if hasSub then
+        Make("TextLabel", {
+            Size = UDim2.new(1, -34, 0, 14), Position = UDim2.new(0, 0, 0, 24),
+            BackgroundTransparency = 1, Text = opts.Subtitle, TextColor3 = theme.SubText,
+            Font = Enum.Font.Gotham, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left,
+            TextTruncate = Enum.TextTruncate.AtEnd,
+        }, header)
+    end
+    local closeBtn
+    if opts.AllowClose ~= false then
+        closeBtn = Make("TextButton", {
+            Size = UDim2.new(0, 26, 0, 26), Position = UDim2.new(1, -26, 0, -2),
+            BackgroundColor3 = theme.Element, BorderSizePixel = 0, Text = "X",
+            TextColor3 = theme.Text, Font = Enum.Font.GothamBold, TextSize = 13, AutoButtonColor = false,
+        }, header)
+        Round(closeBtn, 7)
+        closeBtn.MouseEnter:Connect(function() Tween(closeBtn, { BackgroundColor3 = red }, 0.12) end)
+        closeBtn.MouseLeave:Connect(function() Tween(closeBtn, { BackgroundColor3 = theme.Element }, 0.15) end)
+    end
+
+    -- Nota (opcional)
+    if hasNote then
+        local noteBox = Make("Frame", {
+            Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+            BackgroundColor3 = theme.Element, BorderSizePixel = 0, LayoutOrder = 2,
+        }, panel)
+        Round(noteBox, 8)
+        Pad(noteBox, 10)
+        Make("UIListLayout", { Padding = UDim.new(0, 3) }, noteBox)
+        Make("TextLabel", {
+            Size = UDim2.new(1, 0, 0, 14), BackgroundTransparency = 1, Text = "NOTA",
+            TextColor3 = theme.Accent, Font = Enum.Font.GothamBold, TextSize = 11,
+            TextXAlignment = Enum.TextXAlignment.Left,
+        }, noteBox)
+        Make("TextLabel", {
+            Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1,
+            Text = opts.Note, TextColor3 = theme.Text, Font = Enum.Font.Gotham, TextSize = 13,
+            TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top,
+        }, noteBox)
+    end
+
+    -- Caja de la key
+    local box = Make("TextBox", {
+        Size = UDim2.new(1, 0, 0, 38), BackgroundColor3 = theme.Element, BorderSizePixel = 0,
+        Text = "", PlaceholderText = opts.Placeholder or "Pega tu key aquí...",
+        TextColor3 = theme.Text, PlaceholderColor3 = theme.SubText, Font = Enum.Font.GothamMedium,
+        TextSize = 14, ClearTextOnFocus = false, LayoutOrder = 3,
+    }, panel)
+    Round(box, 8)
+    Make("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) }, box)
+    local boxStroke = Make("UIStroke", { Color = theme.Accent, Thickness = 1.5, Transparency = 1 }, box)
+    box.Focused:Connect(function() Tween(boxStroke, { Transparency = 0 }, 0.15) end)
+
+    local status = Make("TextLabel", {
+        Size = UDim2.new(1, 0, 0, 16), BackgroundTransparency = 1, Text = "", TextColor3 = theme.SubText,
+        Font = Enum.Font.GothamMedium, TextSize = 12, LayoutOrder = 4,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, panel)
+    local function setStatus(text, color)
+        status.Text = text
+        status.TextColor3 = color or theme.SubText
+    end
+
+    -- Botones
+    local btnRow = Make("Frame", { Size = UDim2.new(1, 0, 0, 36), BackgroundTransparency = 1, LayoutOrder = 5 }, panel)
+    Make("UIListLayout", {
+        FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8),
+        SortOrder = Enum.SortOrder.LayoutOrder,
+    }, btnRow)
+    local count = opts.GetKeyLink and 2 or 1
+    local function mkBtn(text, order, primary)
+        local b = Make("TextButton", {
+            Size = UDim2.new(1 / count, -(8 * (count - 1)) / count, 1, 0), LayoutOrder = order,
+            BackgroundColor3 = primary and theme.Accent or theme.Element, BorderSizePixel = 0,
+            Text = text, TextColor3 = primary and Color3.new(1, 1, 1) or theme.Text,
+            Font = Enum.Font.GothamMedium, TextSize = 14, AutoButtonColor = true,
+        }, btnRow)
+        Round(b, 8)
+        return b
+    end
+    local verifyBtn = mkBtn(opts.VerifyText or "Verificar", 1, true)
+    local linkBtn = opts.GetKeyLink and mkBtn(opts.GetKeyText or "Obtener key", 2, false) or nil
+
+    -- Lógica
+    local done, result, busy, attempts = false, false, false, 0
+
+    local function finish(res)
+        if done then return end
+        done, result = true, res
+        if rgbConn then rgbConn:Disconnect() end
+        Tween(pScale, { Scale = 0.8 }, 0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+        Tween(backdrop, { BackgroundTransparency = 1 }, 0.25)
+        task.delay(0.27, function() gui:Destroy() end)
+    end
+
+    local function shake()
+        task.spawn(function()
+            local base = panel.Position
+            for _, dx in ipairs({ 10, -10, 7, -7, 3, 0 }) do
+                Tween(panel, { Position = base + UDim2.new(0, dx, 0, 0) }, 0.05)
+                task.wait(0.05)
+            end
+        end)
+    end
+
+    local function verify()
+        if busy or done then return end
+        local input = box.Text
+        if Trim(input) == "" then
+            setStatus("Escribe tu key primero", red)
+            shake()
+            return
+        end
+        busy = true
+        setStatus("Verificando...", theme.SubText)
+        task.spawn(function()
+            local ok = check(input)
+            busy = false
+            if done then return end
+            if ok then
+                setStatus("Key correcta", green)
+                if not opts.RGBBorder then Tween(stroke, { Color = green, Transparency = 0 }, 0.2) end
+                if opts.SaveKey and writefile then pcall(writefile, fileName, Trim(input)) end
+                if notify then
+                    self:Notify({ Title = "Key System", Content = "Acceso concedido", Type = "Success", Theme = theme, Duration = 3 })
+                end
+                task.wait(0.45)
+                finish(true)
+                Safe(opts.OnSuccess)
+            else
+                attempts = attempts + 1
+                setStatus("Key incorrecta", red)
+                if not opts.RGBBorder then
+                    Tween(stroke, { Color = red, Transparency = 0 }, 0.1)
+                    task.delay(0.6, function()
+                        if not done then Tween(stroke, { Color = theme.Accent, Transparency = 0.5 }, 0.3) end
+                    end)
+                end
+                shake()
+                if notify then
+                    self:Notify({ Title = "Key System", Content = "La key no es válida", Type = "Error", Theme = theme, Duration = 3 })
+                end
+                Safe(opts.OnFail, attempts)
+                if opts.MaxAttempts and attempts >= opts.MaxAttempts then
+                    setStatus("Demasiados intentos", red)
+                    task.wait(0.8)
+                    finish(false)
+                    Safe(opts.OnClose)
+                end
+            end
+        end)
+    end
+
+    verifyBtn.MouseButton1Click:Connect(verify)
+    box.FocusLost:Connect(function(enter)
+        Tween(boxStroke, { Transparency = 1 }, 0.2)
+        if enter then verify() end
+    end)
+
+    if linkBtn then
+        linkBtn.MouseButton1Click:Connect(function()
+            local ok = Utils.Copy(opts.GetKeyLink)
+            if ok then
+                setStatus("Link copiado al portapapeles", green)
+                if notify then
+                    self:Notify({ Title = "Key System", Content = "Link copiado", Type = "Success", Theme = theme, Duration = 2.5 })
+                end
+            else
+                setStatus(tostring(opts.GetKeyLink), theme.SubText)
+            end
+        end)
+    end
+
+    if closeBtn then
+        closeBtn.MouseButton1Click:Connect(function()
+            if done then return end
+            finish(false)
+            Safe(opts.OnClose)
+        end)
+    end
+
+    -- Animación de entrada
+    if self.Animations then
+        pScale.Scale = 0.8
+        Tween(pScale, { Scale = 1 }, 0.45, Enum.EasingStyle.Back)
+    end
+    Tween(backdrop, { BackgroundTransparency = opts.BackdropTransparency or 0.35 }, 0.3)
+
+    -- Espera a que el usuario termine
+    repeat task.wait() until done
+    return result
+end
+
 -- ========== Ventana ==========
 function ArceusXLibrary:CreateWindow(opts)
     opts = opts or {}
@@ -969,6 +1288,9 @@ function ArceusXLibrary:CreateWindow(opts)
     local sizeW, sizeH = size.X.Offset, size.Y.Offset
     local userScale = opts.Scale or 1
     local cr = opts.CornerRadius or 14
+    local subtitle = opts.Subtitle
+    local hasSub = subtitle ~= nil and subtitle ~= ""
+    local topH = hasSub and 40 or 34
 
     local main = Make("Frame", {
         Size = size, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 0),
@@ -979,7 +1301,7 @@ function ArceusXLibrary:CreateWindow(opts)
 
     -- Barra superior (redondeada arriba, recta abajo)
     local top = Make("Frame", {
-        Size = UDim2.new(1, 0, 0, 34), BackgroundColor3 = theme.Top, BorderSizePixel = 0,
+        Size = UDim2.new(1, 0, 0, topH), BackgroundColor3 = theme.Top, BorderSizePixel = 0,
     }, main)
     Round(top, cr)
     local topFill = Make("Frame", {
@@ -987,10 +1309,17 @@ function ArceusXLibrary:CreateWindow(opts)
         BackgroundColor3 = theme.Top, BorderSizePixel = 0,
     }, top)
     local titleLabel = Make("TextLabel", {
-        Size = UDim2.new(1, -90, 1, 0), Position = UDim2.new(0, 12, 0, 0),
+        Size = hasSub and UDim2.new(1, -90, 0, 20) or UDim2.new(1, -90, 1, 0),
+        Position = UDim2.new(0, 12, 0, hasSub and 4 or 0),
         BackgroundTransparency = 1, Text = opts.Title or "ArceusX Library V2",
         TextColor3 = theme.Text, Font = Enum.Font.GothamBold, TextSize = 15,
-        TextXAlignment = Enum.TextXAlignment.Left,
+        TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
+    }, top)
+    local subtitleLabel = Make("TextLabel", {
+        Size = UDim2.new(1, -90, 0, 14), Position = UDim2.new(0, 12, 0, 23),
+        BackgroundTransparency = 1, Text = subtitle or "", TextColor3 = theme.SubText,
+        Font = Enum.Font.Gotham, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left,
+        TextTruncate = Enum.TextTruncate.AtEnd, Visible = hasSub,
     }, top)
 
     local function topBtn(text, offset)
@@ -1013,7 +1342,7 @@ function ArceusXLibrary:CreateWindow(opts)
     local sbW = hasProfile and 130 or 110
 
     local sidebar = Make("Frame", {
-        Size = UDim2.new(0, sbW, 1, -34), Position = UDim2.new(0, 0, 0, 34),
+        Size = UDim2.new(0, sbW, 1, -topH), Position = UDim2.new(0, 0, 0, topH),
         BackgroundColor3 = theme.Top, BorderSizePixel = 0,
     }, main)
     Round(sidebar, cr)
@@ -1067,9 +1396,22 @@ function ArceusXLibrary:CreateWindow(opts)
     end
 
     local pages = Make("Frame", {
-        Size = UDim2.new(1, -sbW, 1, -34), Position = UDim2.new(0, sbW, 0, 34),
+        Size = UDim2.new(1, -sbW, 1, -topH), Position = UDim2.new(0, sbW, 0, topH),
         BackgroundTransparency = 1, ClipsDescendants = true,
     }, main)
+
+    -- Recalcula la barra superior (cuando se agrega/quita el subtítulo)
+    local function layoutTop()
+        topH = hasSub and 40 or 34
+        top.Size = UDim2.new(1, 0, 0, topH)
+        sidebar.Size = UDim2.new(0, sbW, 1, -topH)
+        sidebar.Position = UDim2.new(0, 0, 0, topH)
+        pages.Size = UDim2.new(1, -sbW, 1, -topH)
+        pages.Position = UDim2.new(0, sbW, 0, topH)
+        titleLabel.Size = hasSub and UDim2.new(1, -90, 0, 20) or UDim2.new(1, -90, 1, 0)
+        titleLabel.Position = UDim2.new(0, 12, 0, hasSub and 4 or 0)
+        subtitleLabel.Visible = hasSub
+    end
 
     -- Borde RGB opcional
     local stroke = Make("UIStroke", {
@@ -1167,7 +1509,7 @@ function ArceusXLibrary:CreateWindow(opts)
     function window:Minimize(state)
         if state == nil then state = not minimized end
         minimized = state
-        local newH = state and 34 or sizeH
+        local newH = state and topH or sizeH
         local curH = main.Size.Y.Offset
         Tween(main, {
             Size = UDim2.new(0, sizeW, 0, newH),
@@ -1186,6 +1528,12 @@ function ArceusXLibrary:CreateWindow(opts)
 
     function window:Destroy() gui:Destroy() end
     function window:SetTitle(t) titleLabel.Text = tostring(t) end
+    function window:SetSubtitle(t)
+        t = t and tostring(t) or ""
+        subtitleLabel.Text = t
+        hasSub = t ~= ""
+        layoutTop()
+    end
     function window:SetToggleKey(key) toggleKey = key end
     function window:SetScale(n)
         userScale = math.clamp(n, 0.5, 1.6)
@@ -1235,6 +1583,8 @@ function ArceusXLibrary:CreateWindow(opts)
     -- ----- Diálogo animado: Window:Dialog({Title, Content, Buttons = {{Text, Callback}}}) -----
     function window:Dialog(d)
         d = d or {}
+        if window._activeDialog then return window._activeDialog end
+        if minimized then window:Minimize(false) end
         local overlay = Make("TextButton", {
             Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Color3.new(0, 0, 0),
             BackgroundTransparency = 1, Text = "", AutoButtonColor = false, ZIndex = 100,
@@ -1272,6 +1622,7 @@ function ArceusXLibrary:CreateWindow(opts)
         local function close()
             if closed then return end
             closed = true
+            window._activeDialog = nil
             Tween(overlay, { BackgroundTransparency = 1 }, 0.2)
             Tween(pScale, { Scale = 0.8 }, 0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
             task.delay(0.22, function() overlay:Destroy() end)
@@ -1295,7 +1646,9 @@ function ArceusXLibrary:CreateWindow(opts)
 
         Tween(overlay, { BackgroundTransparency = 0.45 }, 0.2)
         Tween(pScale, { Scale = 1 }, 0.3, Enum.EasingStyle.Back)
-        return { Close = close }
+        local handle = { Close = close }
+        window._activeDialog = handle
+        return handle
     end
 
     -- ----- Eventos de la ventana -----
@@ -1304,7 +1657,26 @@ function ArceusXLibrary:CreateWindow(opts)
         Tween(floatScale, { Scale = 1 }, 0.3, Enum.EasingStyle.Back)
         window:Toggle()
     end)
-    Connect(closeBtn.MouseButton1Click, function() window:Toggle(false) end)
+    local confirmClose = opts.ConfirmClose ~= false
+    local closeAction = opts.CloseAction or "Hide" -- "Hide" oculta el menú, "Destroy" lo descarga
+    local function doClose()
+        if closeAction == "Destroy" then ArceusXLibrary:Destroy() else window:Toggle(false) end
+    end
+    function window:SetConfirmClose(state) confirmClose = state and true or false end
+    function window:Close(force) -- pide confirmación salvo que force = true
+        if force or not confirmClose then
+            doClose()
+            return
+        end
+        window:Dialog({
+            Title = opts.CloseTitle or "Cerrar menú",
+            Content = opts.CloseMessage or (closeAction == "Destroy"
+                and "¿Seguro que quieres cerrar y descargar el menú?"
+                or "¿Seguro que quieres cerrar el menú? Podrás abrirlo de nuevo con el botón flotante."),
+            Buttons = { { Text = "Cerrar", Callback = doClose }, { Text = "Cancelar" } },
+        })
+    end
+    Connect(closeBtn.MouseButton1Click, function() window:Close() end)
     Connect(minBtn.MouseButton1Click, function() window:Minimize() end)
     Connect(UIS.InputBegan, function(i, gp)
         if not gp and toggleKey and i.KeyCode == toggleKey then window:Toggle() end
