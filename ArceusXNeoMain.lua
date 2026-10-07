@@ -1,10 +1,7 @@
 --[[
     ArceusXLibraryV2  v3.0  -  (móvil y PC)
+    Desarrollada por MateoScripts
 
-    UI:  Window, Tab, Section, Label, Paragraph, Divider, Button, Toggle, Slider,
-         Dropdown, TextBox, Keybind, ColorPicker, Dialog, Stats HUD, Perfil
-    Extras: animaciones, notificaciones por tipo, borde RGB, botón UI RGB,
-            configs (guardar/cargar/borrar), ArceusXLibrary.Utils (utilidades)
 ]]
 
 local Players = game:GetService("Players")
