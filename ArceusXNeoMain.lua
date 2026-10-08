@@ -9,7 +9,7 @@
                LoadingScreen, WelcomeMessage, AutoSave/AutoLoad, ConfirmClose, Perfil,
                borde RGB, botón UI RGB, AllowedPlaces/AllowedUsers/BlockedUsers
     KeySystem: integrado en CreateWindow (KeySystem = true, KeySettings = {...}) con nota,
-               varios links, expiración de keys, bloqueo temporal, kick y key guardada
+               botón Copy, varios links, expiración de keys, bloqueo temporal, kick y key guardada
     Extras:    notificaciones por tipo, diálogos, configs, ArceusXLibrary.Utils
 ]]
 
@@ -25,7 +25,7 @@ local SoundService = game:GetService("SoundService")
 local CoreGui = game:GetService("CoreGui")
 
 local ArceusXLibrary = {
-    Version = "4.0",
+    Version = "4.1",
     Flags = {},
     Windows = {},
     Utils = {},
@@ -95,7 +95,7 @@ local Strings = {
         key_checking = "Verificando...", key_ok = "Key correcta", key_bad = "Key incorrecta",
         key_saved_valid = "Key guardada válida", key_granted = "Acceso concedido",
         key_invalid = "La key no es válida", key_too_many = "Demasiados intentos",
-        key_copied = "Link copiado al portapapeles", key_copied_short = "Link copiado",
+        key_copied = "Copiado al portapapeles", key_copied_short = "Copiado", key_copy = "Copiar",
         key_expired = "Tu key expiró", key_locked = "Bloqueado: %ds",
         key_kick = "Demasiados intentos con una key incorrecta",
     },
@@ -119,7 +119,7 @@ local Strings = {
         key_checking = "Checking...", key_ok = "Correct key", key_bad = "Wrong key",
         key_saved_valid = "Saved key is valid", key_granted = "Access granted",
         key_invalid = "The key is not valid", key_too_many = "Too many attempts",
-        key_copied = "Link copied to clipboard", key_copied_short = "Link copied",
+        key_copied = "Copied to clipboard", key_copied_short = "Copied", key_copy = "Copy",
         key_expired = "Your key expired", key_locked = "Locked: %ds",
         key_kick = "Too many attempts with a wrong key",
     },
@@ -1261,7 +1261,9 @@ end
 
 --[[
     Normalmente se usa desde CreateWindow:  KeySystem = true, KeySettings = { ... }
-    KeySettings: Title, Subtitle, Note, Keys / Key / entradas sueltas, KeyUrl, Validate,
+    KeySettings: Title, Subtitle, Note,
+      Key = "a" | Key = { "a", "b" }  (también Keys y entradas sueltas), KeyUrl, Validate,
+      Copy = "texto"                   -- botón "Copiar" que copia ese texto (ej. la key)
       KeyExpiry = { ["key"] = os.time{...} }   -- fecha límite absoluta por key
       KeyDurations = { ["key"] = horas }       -- duración desde el primer uso (requiere SaveKey)
       SaveDuration = horas                     -- duración por defecto de la key guardada
@@ -1287,15 +1289,18 @@ function ArceusXLibrary:KeySystem(opts)
 
     -- Keys: Key = "a" | Keys = "a" | Keys = { "a", "b" } | y también entradas sueltas { "a", "b" }
     local keys = {}
-    if type(opts.Key) == "string" then table.insert(keys, Trim(opts.Key)) end
-    if type(opts.Keys) == "string" then
-        table.insert(keys, Trim(opts.Keys))
-    elseif type(opts.Keys) == "table" then
-        for _, k in ipairs(opts.Keys) do table.insert(keys, Trim(k)) end
+    local function addKeys(v)
+        if type(v) == "string" or type(v) == "number" then
+            table.insert(keys, Trim(v))
+        elseif type(v) == "table" then
+            for _, k in ipairs(v) do
+                if type(k) == "string" or type(k) == "number" then table.insert(keys, Trim(k)) end
+            end
+        end
     end
-    for _, k in ipairs(opts) do
-        if type(k) == "string" then table.insert(keys, Trim(k)) end
-    end
+    addKeys(opts.Key)   -- Key = "a"  o  Key = { "a", "b" }
+    addKeys(opts.Keys)  -- Keys = "a"  o  Keys = { "a", "b" }
+    addKeys(opts)       -- entradas sueltas
     if #keys == 0 and not opts.KeyUrl and type(opts.Validate) ~= "function" then
         warn("[ArceusXLibraryV2] KeySystem sin keys configuradas (usa Keys, KeyUrl o Validate)")
     end
@@ -1303,11 +1308,11 @@ function ArceusXLibrary:KeySystem(opts)
     -- Links para obtener la key (uno o varios)
     local links = {}
     local function addLink(l, defaultText)
-        if type(l) == "string" then
-            table.insert(links, { Text = defaultText, Link = l })
+        if type(l) == "string" or type(l) == "number" then
+            table.insert(links, { Text = defaultText, Link = tostring(l) })
         elseif type(l) == "table" then
-            local url = l.Link or l.Url or l[1]
-            if url then table.insert(links, { Text = l.Text or l.Name or defaultText, Link = url }) end
+            local url = l.Link or l.Url or l.Value or l[1]
+            if url then table.insert(links, { Text = l.Text or l.Name or defaultText, Link = tostring(url) }) end
         end
     end
     local defaultLinkText = opts.GetKeyText or L("key_getkey")
@@ -1318,6 +1323,13 @@ function ArceusXLibrary:KeySystem(opts)
     end
     if type(opts.Links) == "table" then
         for _, l in ipairs(opts.Links) do addLink(l, defaultLinkText) end
+    end
+    -- Copy = "2026"  ->  botón "Copiar" que copia ese texto al portapapeles
+    local copyText = opts.CopyText or L("key_copy")
+    if type(opts.Copy) == "table" and opts.Copy.Text == nil and opts.Copy.Value == nil and opts.Copy.Link == nil then
+        for _, c in ipairs(opts.Copy) do addLink(c, copyText) end
+    else
+        addLink(opts.Copy, copyText)
     end
 
     -- Devuelve ok, motivo ("expired")
@@ -1681,9 +1693,10 @@ function ArceusXLibrary:CreateWindow(opts)
     end
 
     -- 2) Key System integrado: se muestra antes de crear la ventana
-    if opts.KeySystem then
+    local usedKeySettings
+    if opts.KeySystem or opts.Keysystem then
         local ks = {}
-        for k, v in pairs(opts.KeySettings or {}) do ks[k] = v end -- copia (incluye keys sueltas)
+        for k, v in pairs(opts.KeySettings or opts.Keysettings or {}) do ks[k] = v end -- copia (incluye keys sueltas)
         if ks.Title == nil or ks.Title == "" then ks.Title = winTitle .. ": Key System" end
         if ks.Subtitle == nil or ks.Subtitle == "" then ks.Subtitle = "Key System" end
         if ks.Theme == nil then ks.Theme = opts.Theme end
@@ -1692,6 +1705,7 @@ function ArceusXLibrary:CreateWindow(opts)
         if ks.Animations == nil then ks.Animations = opts.Animations end
         if ks.RGBBorder == nil and ks.RGBBorders == nil then ks.RGBBorder = opts.RGBBorder end
         if ks.FileName == nil then ks.FileName = "ArceusXV2_Key_" .. cleanTitle .. ".txt" end
+        usedKeySettings = ks
         local granted = self:KeySystem(ks)
         if not granted then
             if ks.StopScript == false then return nil end
@@ -2006,7 +2020,10 @@ function ArceusXLibrary:CreateWindow(opts)
         end
     end)
 
-    local window = { Gui = gui, Tabs = {}, _visible = true, ConfigName = opts.ConfigName or cleanTitle }
+    local window = {
+        Gui = gui, Tabs = {}, _visible = true, ConfigName = opts.ConfigName or cleanTitle,
+        KeySettings = usedKeySettings, -- settings usados por el Key System (nil si no se usó)
+    }
     local minimized = false
     local toggleKey = opts.ToggleKey
 
@@ -2490,4 +2507,3 @@ function ArceusXLibrary:Destroy()
 end
 
 return ArceusXLibrary
- 
