@@ -3,7 +3,8 @@
 
     Elementos: Section, Label, Paragraph, Divider, Button, Toggle, Slider, Dropdown,
                TextBox, Keybind, ColorPicker  (+ búsqueda opcional por pestaña)
-    Ventana:   Subtitle, Icon, Version, Watermark, Position, Resizable, Draggable,
+    Ventana:   Name, Subtitle, Icon (id o rbxassetid), LoadingTitle/LoadingSubtitle, RGBBorders,
+               SaveConfig (guarda y carga solo), Version, Watermark, Position, Resizable, Draggable,
                Transparency, Blur, TabPosition (Left/Top), iconos de pestañas, Font,
                TextScale, Sounds, Language, StartMinimized, StartHidden, Stats,
                LoadingScreen, WelcomeMessage, AutoSave/AutoLoad, ConfirmClose, Perfil,
@@ -11,6 +12,9 @@
     KeySystem: integrado en CreateWindow (KeySystem = true, KeySettings = {...}) con nota,
                botón Copy, varios links, expiración de keys, bloqueo temporal, kick y key guardada
     Extras:    notificaciones por tipo, diálogos, configs, ArceusXLibrary.Utils
+    Rayfield:  API compatible (CreateWindow con opciones de Rayfield, Window:CreateTab,
+               Tab:CreateButton/Toggle/Slider/Input/Dropdown/Keybind/ColorPicker/Label/
+               Paragraph/Section/Divider, Notify con Image, LoadConfiguration, SetVisibility)
 ]]
 
 local Players = game:GetService("Players")
@@ -25,7 +29,7 @@ local SoundService = game:GetService("SoundService")
 local CoreGui = game:GetService("CoreGui")
 
 local ArceusXLibrary = {
-    Version = "4.1",
+    Version = "4.3",
     Flags = {},
     Windows = {},
     Utils = {},
@@ -60,6 +64,74 @@ local Themes = {
     },
 }
 ArceusXLibrary.Themes = Themes
+
+-- Temas con los nombres de Rayfield
+Themes.Default = Themes.Dark
+Themes.Ocean = {
+    Main = Color3.fromRGB(15, 25, 35), Top = Color3.fromRGB(20, 35, 50),
+    Element = Color3.fromRGB(28, 48, 68), Accent = Color3.fromRGB(0, 170, 255),
+    Text = Color3.fromRGB(235, 245, 255), SubText = Color3.fromRGB(150, 175, 195),
+}
+Themes.Amethyst = {
+    Main = Color3.fromRGB(30, 22, 40), Top = Color3.fromRGB(40, 30, 55),
+    Element = Color3.fromRGB(52, 38, 72), Accent = Color3.fromRGB(170, 90, 255),
+    Text = Color3.fromRGB(245, 238, 255), SubText = Color3.fromRGB(175, 160, 195),
+}
+Themes.Green = {
+    Main = Color3.fromRGB(20, 30, 24), Top = Color3.fromRGB(26, 40, 31),
+    Element = Color3.fromRGB(34, 52, 41), Accent = Color3.fromRGB(60, 200, 110),
+    Text = Color3.fromRGB(238, 250, 242), SubText = Color3.fromRGB(150, 180, 160),
+}
+Themes.AmberGlow = {
+    Main = Color3.fromRGB(35, 26, 18), Top = Color3.fromRGB(46, 34, 22),
+    Element = Color3.fromRGB(60, 44, 28), Accent = Color3.fromRGB(255, 170, 40),
+    Text = Color3.fromRGB(255, 244, 228), SubText = Color3.fromRGB(190, 168, 140),
+}
+Themes.Bloom = {
+    Main = Color3.fromRGB(40, 24, 32), Top = Color3.fromRGB(52, 30, 42),
+    Element = Color3.fromRGB(68, 40, 55), Accent = Color3.fromRGB(255, 100, 170),
+    Text = Color3.fromRGB(255, 238, 246), SubText = Color3.fromRGB(195, 160, 178),
+}
+Themes.DarkBlue = {
+    Main = Color3.fromRGB(18, 22, 38), Top = Color3.fromRGB(24, 30, 52),
+    Element = Color3.fromRGB(32, 40, 68), Accent = Color3.fromRGB(80, 120, 255),
+    Text = Color3.fromRGB(236, 240, 255), SubText = Color3.fromRGB(150, 160, 195),
+}
+Themes.Serenity = {
+    Main = Color3.fromRGB(230, 240, 240), Top = Color3.fromRGB(215, 230, 230),
+    Element = Color3.fromRGB(245, 250, 250), Accent = Color3.fromRGB(70, 170, 160),
+    Text = Color3.fromRGB(30, 45, 45), SubText = Color3.fromRGB(95, 120, 120),
+}
+
+-- Arma el tema: nombre ("Dark", "Ocean"...) o tabla de Rayfield (Background, Topbar, ...) + CustomTheme
+local function BuildTheme(themeOpt, custom)
+    local base = Themes.Dark
+    local extra
+    if type(themeOpt) == "string" then
+        base = Themes[themeOpt] or Themes.Dark
+    elseif type(themeOpt) == "table" then
+        extra = themeOpt
+    end
+    local theme = {}
+    for k, v in pairs(base) do theme[k] = v end
+    if extra then
+        local map = {
+            Background = "Main", Topbar = "Top", ElementBackground = "Element",
+            TextColor = "Text", PlaceholderColor = "SubText",
+            ToggleEnabled = "Accent",
+        }
+        for k, v in pairs(extra) do
+            if typeof(v) == "Color3" then
+                if theme[k] ~= nil then theme[k] = v elseif map[k] then theme[map[k]] = v end
+            end
+        end
+        if extra.ToggleEnabled == nil and typeof(extra.SliderProgress) == "Color3" then
+            theme.Accent = extra.SliderProgress
+        end
+    end
+    for k, v in pairs(custom or {}) do theme[k] = v end
+    return theme
+end
 
 local NotifyTypes = {
     Info = { Color = Color3.fromRGB(80, 150, 255), Icon = "i" },
@@ -96,6 +168,8 @@ local Strings = {
         key_saved_valid = "Key guardada válida", key_granted = "Acceso concedido",
         key_invalid = "La key no es válida", key_too_many = "Demasiados intentos",
         key_copied = "Copiado al portapapeles", key_copied_short = "Copiado", key_copy = "Copiar",
+        discord_title = "Discord", discord_text = "¡Únete a nuestro servidor de Discord!",
+        discord_copy = "Copiar invitación", discord_later = "Luego",
         key_expired = "Tu key expiró", key_locked = "Bloqueado: %ds",
         key_kick = "Demasiados intentos con una key incorrecta",
     },
@@ -120,6 +194,8 @@ local Strings = {
         key_saved_valid = "Saved key is valid", key_granted = "Access granted",
         key_invalid = "The key is not valid", key_too_many = "Too many attempts",
         key_copied = "Copied to clipboard", key_copied_short = "Copied", key_copy = "Copy",
+        discord_title = "Discord", discord_text = "Join our Discord server!",
+        discord_copy = "Copy invite", discord_later = "Later",
         key_expired = "Your key expired", key_locked = "Locked: %ds",
         key_kick = "Too many attempts with a wrong key",
     },
@@ -279,6 +355,24 @@ end
 
 local function Trim(str)
     return (tostring(str):gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+-- Imagen: acepta un número (123456), "123456", "rbxassetid://123456", "rbxthumb://..." o un link.
+-- 0 y textos que no son una imagen (por ejemplo "PON_TU_ID_AQUI" o un ícono Lucide) se ignoran.
+local function NormalizeImage(v)
+    if v == nil or v == "" then return nil end
+    if type(v) == "number" then
+        if v == 0 then return nil end
+        return "rbxassetid://" .. tostring(math.floor(v))
+    end
+    v = Trim(v)
+    local n = tonumber(v)
+    if n then
+        if n == 0 then return nil end
+        return "rbxassetid://" .. v
+    end
+    if string.find(v, "rbx") or string.find(v, "^https?://") then return v end
+    return nil
 end
 
 -- ========== ArceusXLibrary.Utils (utilidades) ==========
@@ -545,11 +639,14 @@ local function AddElements(obj, container, theme)
         return deco({ SetText = function(_, t) l.Text = string.upper(t) end }, l, text, true)
     end
 
-    function obj:AddLabel(text)
+    function obj:AddLabel(text, color)
         local row = Row(30)
         local l = RowLabel(row, text)
-        l.TextColor3 = theme.SubText
-        return deco({ Set = function(_, t) l.Text = t end }, row, text)
+        l.TextColor3 = color or theme.SubText
+        return deco({
+            Set = function(_, t) l.Text = t end,
+            SetColor = function(_, c) l.TextColor3 = c end,
+        }, row, text)
     end
 
     function obj:AddParagraph(title, text)
@@ -736,20 +833,63 @@ local function AddElements(obj, container, theme)
         }, holder)
         Make("UIListLayout", { Padding = UDim.new(0, 2) }, list)
 
+        local multi = opts.Multi == true
         local api = { Value = opts.Default, Options = options }
+        if multi then
+            local init = {}
+            if type(opts.Default) == "table" then
+                for _, v in ipairs(opts.Default) do table.insert(init, v) end
+            elseif opts.Default ~= nil then
+                init = { opts.Default }
+            end
+            api.Value = init
+        end
+        local optionButtons = {}
+        local function isSelected(name)
+            if not multi then return false end
+            for _, v in ipairs(api.Value) do
+                if v == name then return true end
+            end
+            return false
+        end
+        local function paint()
+            for name, b in pairs(optionButtons) do
+                b.BackgroundColor3 = isSelected(name) and theme.Accent or theme.Top
+            end
+        end
         local function refreshTitle()
-            title.Text = (opts.Name or "Dropdown") .. ": " .. tostring(api.Value or "-")
+            local shown
+            if multi then
+                shown = (#api.Value > 0) and table.concat(api.Value, ", ") or "-"
+            else
+                shown = tostring(api.Value or "-")
+            end
+            title.Text = (opts.Name or "Dropdown") .. ": " .. shown
         end
         function api:Set(v, silent)
-            self.Value = v
+            if multi then
+                local newValue = {}
+                if type(v) == "table" then
+                    for _, x in ipairs(v) do table.insert(newValue, x) end
+                elseif v ~= nil then
+                    newValue = { v }
+                end
+                self.Value = newValue
+                paint()
+            else
+                self.Value = v
+            end
             refreshTitle()
-            if not silent then Safe(opts.Callback, v) end
+            if not silent then
+                if multi then Safe(opts.Callback, table.clone(self.Value)) else Safe(opts.Callback, v) end
+            end
         end
         function api:Get() return self.Value end
         function api:Refresh(newOptions)
             for _, c in ipairs(list:GetChildren()) do
                 if c:IsA("TextButton") then c:Destroy() end
             end
+            optionButtons = {}
             self.Options = newOptions
             for _, name in ipairs(newOptions) do
                 local b = Make("TextButton", {
@@ -757,14 +897,26 @@ local function AddElements(obj, container, theme)
                     Text = tostring(name), TextColor3 = theme.Text, Font = Fonts.Regular,
                     TextSize = TS(13), AutoButtonColor = true,
                 }, list)
+                optionButtons[name] = b
                 Connect(b.MouseButton1Click, function()
                     PlaySfx("Click")
-                    api:Set(name)
-                    note(opts, opts.Name or "Dropdown", L("selected") .. tostring(name))
-                    list.Visible = false
-                    Tween(arrow, { Rotation = 0 }, 0.2)
+                    if multi then
+                        local nextValue, found = {}, false
+                        for _, v in ipairs(api.Value) do
+                            if v == name then found = true else table.insert(nextValue, v) end
+                        end
+                        if not found then table.insert(nextValue, name) end
+                        api:Set(nextValue)
+                        note(opts, opts.Name or "Dropdown", L("selected") .. table.concat(api.Value, ", "))
+                    else
+                        api:Set(name)
+                        note(opts, opts.Name or "Dropdown", L("selected") .. tostring(name))
+                        list.Visible = false
+                        Tween(arrow, { Rotation = 0 }, 0.2)
+                    end
                 end)
             end
+            paint()
         end
         Connect(head.MouseButton1Click, function()
             PlaySfx("Click")
@@ -804,6 +956,10 @@ local function AddElements(obj, container, theme)
             api.Value = box.Text
             note(opts, opts.Name or "TextBox", L("text") .. box.Text)
             Safe(opts.Callback, box.Text)
+            if opts.ClearOnFocusLost then
+                box.Text = ""
+                api.Value = ""
+            end
         end)
         if opts.Flag then ArceusXLibrary.Flags[opts.Flag] = api end
         return deco(api, row, opts.Name)
@@ -844,6 +1000,9 @@ local function AddElements(obj, container, theme)
                 note(opts, opts.Name or "Keybind", L("keyused") .. api.Value.Name, "Info", 1.5)
                 Safe(opts.Callback, api.Value)
             end
+        end)
+        Connect(UIS.InputEnded, function(input)
+            if not listening and input.KeyCode == api.Value then Safe(opts.OnRelease, api.Value) end
         end)
         api:Set(api.Value, true)
         if opts.Flag then ArceusXLibrary.Flags[opts.Flag] = api end
@@ -934,6 +1093,221 @@ local function AddElements(obj, container, theme)
     end
 end
 
+-- ========== API de Rayfield (Tab:CreateButton, CreateToggle, ...) ==========
+local function KeyFromString(k, fallback)
+    if typeof(k) == "EnumItem" then return k end
+    if type(k) == "string" then
+        local ok, v = pcall(function() return Enum.KeyCode[k] end)
+        if ok and v then return v end
+    end
+    return fallback
+end
+
+local function AddRayfieldAPI(tab)
+    local function flag(name, w)
+        if name then ArceusXLibrary.Flags[name] = w end
+    end
+
+    function tab:CreateSection(name)
+        local sec = tab:AddSection(name or "")
+        local W = {}
+        function W:Set(n) sec:SetText(n) end
+        function W:SetVisible(v) sec:SetVisible(v) end
+        function W:Destroy() sec:Destroy() end
+        return W
+    end
+
+    function tab:CreateDivider()
+        local d = tab:AddDivider()
+        local W = {}
+        function W:Set(visible) d:SetVisible(visible) end
+        function W:SetVisible(v) d:SetVisible(v) end
+        function W:Destroy() d:Destroy() end
+        return W
+    end
+
+    -- CreateLabel(Texto, Icono, Color, IgnorarTema)
+    function tab:CreateLabel(text, icon, color, ignoreTheme)
+        local l = tab:AddLabel(text or "", typeof(color) == "Color3" and color or nil)
+        local W = {}
+        function W:Set(t, _, c)
+            l:Set(t or "")
+            if typeof(c) == "Color3" then l:SetColor(c) end
+        end
+        function W:SetVisible(v) l:SetVisible(v) end
+        function W:Destroy() l:Destroy() end
+        return W
+    end
+
+    -- CreateParagraph({ Title, Content })
+    function tab:CreateParagraph(o)
+        o = o or {}
+        local p = tab:AddParagraph(o.Title or "", o.Content or "")
+        local W = {}
+        function W:Set(n)
+            n = n or {}
+            if n.Title ~= nil then p:SetTitle(n.Title) end
+            if n.Content ~= nil then p:SetText(n.Content) end
+        end
+        function W:SetVisible(v) p:SetVisible(v) end
+        function W:Destroy() p:Destroy() end
+        return W
+    end
+
+    -- CreateButton({ Name, Callback })
+    function tab:CreateButton(o)
+        o = o or {}
+        local btn = tab:AddButton({ Name = o.Name, Notify = o.Notify, Callback = o.Callback })
+        local W = {}
+        function W:Set(name) btn:SetText(name) end
+        function W:SetVisible(v) btn:SetVisible(v) end
+        function W:Destroy() btn:Destroy() end
+        return W
+    end
+
+    -- CreateToggle({ Name, CurrentValue, Flag, Callback })
+    function tab:CreateToggle(o)
+        o = o or {}
+        local W = { CurrentValue = o.CurrentValue and true or false, Type = "Toggle", Flag = o.Flag }
+        local native = tab:AddToggle({
+            Name = o.Name, Default = W.CurrentValue, Notify = o.Notify,
+            Callback = function(v)
+                W.CurrentValue = v
+                Safe(o.Callback, v)
+            end,
+        })
+        function W:Set(v) native:Set(v) end
+        function W:Get() return W.CurrentValue end
+        function W:SetVisible(v) native:SetVisible(v) end
+        function W:Destroy() native:Destroy() end
+        flag(o.Flag, W)
+        return W
+    end
+
+    -- CreateSlider({ Name, Range = {min, max}, Increment, Suffix, CurrentValue, Flag, Callback })
+    function tab:CreateSlider(o)
+        o = o or {}
+        local range = o.Range or { 0, 100 }
+        local W = { CurrentValue = o.CurrentValue or range[1], Type = "Slider", Flag = o.Flag }
+        local native = tab:AddSlider({
+            Name = o.Name, Min = range[1], Max = range[2], Default = W.CurrentValue,
+            Increment = o.Increment or 1, Suffix = o.Suffix, Notify = o.Notify,
+            Callback = function(v)
+                W.CurrentValue = v
+                Safe(o.Callback, v)
+            end,
+        })
+        function W:Set(v) native:Set(v) end
+        function W:Get() return W.CurrentValue end
+        function W:SetVisible(v) native:SetVisible(v) end
+        function W:Destroy() native:Destroy() end
+        flag(o.Flag, W)
+        return W
+    end
+
+    -- CreateInput({ Name, CurrentValue, PlaceholderText, RemoveTextAfterFocusLost, Flag, Callback })
+    function tab:CreateInput(o)
+        o = o or {}
+        local W = { CurrentValue = o.CurrentValue or "", Type = "Input", Flag = o.Flag }
+        local native = tab:AddTextBox({
+            Name = o.Name, Default = W.CurrentValue, Placeholder = o.PlaceholderText,
+            ClearOnFocusLost = o.RemoveTextAfterFocusLost, Notify = o.Notify,
+            Callback = function(t)
+                W.CurrentValue = t
+                Safe(o.Callback, t)
+                if o.RemoveTextAfterFocusLost then W.CurrentValue = "" end
+            end,
+        })
+        function W:Set(t) native:Set(t) end
+        function W:Get() return W.CurrentValue end
+        function W:SetVisible(v) native:SetVisible(v) end
+        function W:Destroy() native:Destroy() end
+        flag(o.Flag, W)
+        return W
+    end
+
+    -- CreateDropdown({ Name, Options, CurrentOption = {..}, MultipleOptions, Flag, Callback(tabla) })
+    function tab:CreateDropdown(o)
+        o = o or {}
+        local multi = o.MultipleOptions == true
+        local cur = {}
+        local co = o.CurrentOption
+        if type(co) == "string" then co = { co } end
+        if type(co) == "table" then
+            for _, v in ipairs(co) do table.insert(cur, v) end
+        end
+        if not multi and #cur > 1 then cur = { cur[1] } end
+        local W = { CurrentOption = cur, Options = o.Options or {}, Type = "Dropdown", Flag = o.Flag }
+        local native = tab:AddDropdown({
+            Name = o.Name, Options = o.Options or {}, Multi = multi,
+            Default = multi and cur or cur[1], Notify = o.Notify,
+            Callback = function(v)
+                if multi then W.CurrentOption = v else W.CurrentOption = { v } end
+                Safe(o.Callback, W.CurrentOption)
+            end,
+        })
+        function W:Set(v)
+            if type(v) ~= "table" then v = { v } end
+            if multi then native:Set(v) else native:Set(v[1]) end
+        end
+        function W:Get() return W.CurrentOption end
+        function W:Refresh(newOptions)
+            W.Options = newOptions
+            native:Refresh(newOptions)
+        end
+        function W:SetVisible(v) native:SetVisible(v) end
+        function W:Destroy() native:Destroy() end
+        flag(o.Flag, W)
+        return W
+    end
+
+    -- CreateKeybind({ Name, CurrentKeybind = "Q", HoldToInteract, Flag, Callback })
+    function tab:CreateKeybind(o)
+        o = o or {}
+        local key = KeyFromString(o.CurrentKeybind, Enum.KeyCode.Q)
+        local W = { CurrentKeybind = key.Name, HoldToInteract = o.HoldToInteract and true or false, Type = "Keybind", Flag = o.Flag }
+        local native = tab:AddKeybind({
+            Name = o.Name, Default = key, Notify = o.Notify,
+            Callback = function() Safe(o.Callback, true) end,
+            OnRelease = function()
+                if W.HoldToInteract then Safe(o.Callback, false) end
+            end,
+            OnChange = function(k) W.CurrentKeybind = k.Name end,
+        })
+        function W:Set(k)
+            local kc = KeyFromString(k, nil)
+            if kc then
+                native:Set(kc, true)
+                W.CurrentKeybind = kc.Name
+            end
+        end
+        function W:Get() return W.CurrentKeybind end
+        function W:SetVisible(v) native:SetVisible(v) end
+        function W:Destroy() native:Destroy() end
+        flag(o.Flag, W)
+        return W
+    end
+
+    -- CreateColorPicker({ Name, Color, Flag, Callback })
+    function tab:CreateColorPicker(o)
+        o = o or {}
+        local W = { Color = o.Color or Color3.new(1, 1, 1), Type = "ColorPicker", Flag = o.Flag }
+        local native = tab:AddColorPicker({
+            Name = o.Name, Default = W.Color, Notify = o.Notify,
+            Callback = function(c)
+                W.Color = c
+                Safe(o.Callback, c)
+            end,
+        })
+        function W:Set(c) native:Set(c) end
+        function W:Get() return W.Color end
+        function W:SetVisible(v) native:SetVisible(v) end
+        function W:Destroy() native:Destroy() end
+        flag(o.Flag, W)
+        return W
+    end
+end
+
 -- ========== Notificaciones (animadas, por tipo) ==========
 function ArceusXLibrary:SetNotifyPosition(pos)
     self.NotifyPosition = pos or "TopRight"
@@ -993,10 +1367,18 @@ function ArceusXLibrary:Notify(opts)
         BackgroundColor3 = accent, BorderSizePixel = 0,
     }, card)
     Round(iconBg, 15)
-    Make("TextLabel", {
-        Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = icon,
-        TextColor3 = Color3.new(1, 1, 1), Font = Fonts.Bold, TextSize = TS(16),
-    }, iconBg)
+    local notifImage = NormalizeImage(opts.Image)
+    if notifImage then
+        Make("ImageLabel", {
+            Size = UDim2.new(0, 20, 0, 20), Position = UDim2.new(0.5, -10, 0.5, -10),
+            BackgroundTransparency = 1, Image = notifImage,
+        }, iconBg)
+    else
+        Make("TextLabel", {
+            Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = icon,
+            TextColor3 = Color3.new(1, 1, 1), Font = Fonts.Bold, TextSize = TS(16),
+        }, iconBg)
+    end
     Make("TextLabel", {
         Size = UDim2.new(1, -62, 0, 18), Position = UDim2.new(0, 50, 0, 7),
         BackgroundTransparency = 1, Text = opts.Title or L("notice"), TextColor3 = accent,
@@ -1054,7 +1436,17 @@ local function Deserialize(v)
     return v
 end
 
-local function ConfigFile(name) return "ArceusXV2_" .. name .. ".json" end
+local function ConfigFile(name)
+    local folder = ArceusXLibrary.ConfigFolder
+    if folder and folder ~= "" then
+        if isfolder and makefolder then
+            local ok, exists = pcall(isfolder, folder)
+            if not (ok and exists) then pcall(makefolder, folder) end
+        end
+        return folder .. "/ArceusXV2_" .. name .. ".json"
+    end
+    return "ArceusXV2_" .. name .. ".json"
+end
 
 -- Texto estable de todos los flags (para detectar cambios en AutoSave)
 function ArceusXLibrary:_Snapshot()
@@ -1112,7 +1504,7 @@ end
 function ArceusXLibrary:GetConfigs()
     local out = {}
     if not listfiles then return out end
-    local ok, files = pcall(listfiles, "")
+    local ok, files = pcall(listfiles, ArceusXLibrary.ConfigFolder or "")
     if not ok then return out end
     for _, path in ipairs(files) do
         local n = string.match(path, "ArceusXV2_([^/\\]+)%.json$")
@@ -1156,9 +1548,7 @@ end
 function ArceusXLibrary:LoadingScreen(opts)
     opts = opts or {}
     ApplyStyle(opts)
-    local theme = {}
-    for k, v in pairs(Themes[opts.Theme or "Dark"]) do theme[k] = v end
-    for k, v in pairs(opts.CustomTheme or {}) do theme[k] = v end
+    local theme = BuildTheme(opts.Theme, opts.CustomTheme)
     local cr = opts.CornerRadius or 14
     local duration = opts.Duration or 2.5
     local steps = opts.Steps or L("loading_steps")
@@ -1279,9 +1669,7 @@ function ArceusXLibrary:KeySystem(opts)
     ApplyStyle(opts)
     if opts.Animations ~= nil then self.Animations = opts.Animations end
 
-    local theme = {}
-    for k, v in pairs(Themes[opts.Theme or "Dark"]) do theme[k] = v end
-    for k, v in pairs(opts.CustomTheme or {}) do theme[k] = v end
+    local theme = BuildTheme(opts.Theme, opts.CustomTheme)
 
     local fileName = opts.FileName or "ArceusXV2_Key.txt"
     local notify = opts.Notify ~= false
@@ -1301,8 +1689,24 @@ function ArceusXLibrary:KeySystem(opts)
     addKeys(opts.Key)   -- Key = "a"  o  Key = { "a", "b" }
     addKeys(opts.Keys)  -- Keys = "a"  o  Keys = { "a", "b" }
     addKeys(opts)       -- entradas sueltas
-    if #keys == 0 and not opts.KeyUrl and type(opts.Validate) ~= "function" then
-        warn("[ArceusXLibraryV2] KeySystem sin keys configuradas (usa Keys, KeyUrl o Validate)")
+    -- KeyUrl: link(s) RAW con keys (una por línea). Rayfield: GrabKeyFromSite = true -> las Keys son links.
+    local urls = {}
+    local function addUrls(v)
+        if type(v) == "string" then
+            table.insert(urls, v)
+        elseif type(v) == "table" then
+            for _, u in ipairs(v) do
+                if type(u) == "string" then table.insert(urls, u) end
+            end
+        end
+    end
+    addUrls(opts.KeyUrl)
+    if opts.GrabKeyFromSite then
+        for _, k in ipairs(keys) do table.insert(urls, k) end
+        keys = {}
+    end
+    if #keys == 0 and #urls == 0 and type(opts.Validate) ~= "function" then
+        warn("[ArceusXLibraryV2] KeySystem sin keys configuradas (usa Key, KeyUrl o Validate)")
     end
 
     -- Links para obtener la key (uno o varios)
@@ -1346,12 +1750,15 @@ function ArceusXLibrary:KeySystem(opts)
                 if input == k then valid = true break end
             end
         end
-        if not valid and opts.KeyUrl then
-            local ok, body = pcall(function() return game:HttpGet(opts.KeyUrl) end)
-            if ok and type(body) == "string" then
-                for line in string.gmatch(body, "[^\r\n]+") do
-                    if Trim(line) == input then valid = true break end
+        if not valid then
+            for _, url in ipairs(urls) do
+                local ok, body = pcall(function() return game:HttpGet(url) end)
+                if ok and type(body) == "string" then
+                    for line in string.gmatch(body, "[^\r\n]+") do
+                        if Trim(line) == input then valid = true break end
+                    end
                 end
+                if valid then break end
             end
         end
         if not valid then return false end
@@ -1666,10 +2073,69 @@ function ArceusXLibrary:KeySystem(opts)
     return result
 end
 
+-- ========== Opciones de CreateWindow: nombres alternativos ==========
+-- Name = Title | RGBBorders = RGBBorder | SaveConfig = AutoSave + AutoLoad
+-- LoadingTitle / LoadingSubtitle / LoadingDuration = pantalla de carga | Keysystem / Keysettings
+local function NormalizeWindowOpts(raw)
+    local o = {}
+    for k, v in pairs(raw or {}) do o[k] = v end
+
+    if o.Title == nil then o.Title = o.Name end
+    if o.RGBBorder == nil then o.RGBBorder = o.RGBBorders end
+    if o.KeySystem == nil then o.KeySystem = o.Keysystem end
+    if o.KeySettings == nil then o.KeySettings = o.Keysettings end
+
+    -- SaveConfig = true  ->  guarda y carga los ajustes automáticamente
+    -- (también acepta una tabla: SaveConfig = { Name = "mi-config", Interval = 5 })
+    local sc = o.SaveConfig
+    if sc ~= nil and sc ~= false then
+        if type(sc) == "table" then
+            if o.ConfigName == nil then o.ConfigName = sc.Name or sc.FileName end
+            if o.AutoSaveInterval == nil then o.AutoSaveInterval = sc.Interval end
+        end
+        if o.AutoSave == nil then o.AutoSave = true end
+        if o.AutoLoad == nil then o.AutoLoad = true end
+    end
+
+    -- ===== Opciones de Rayfield =====
+    -- ToggleUIKeybind = "K" | Enum.KeyCode.K
+    if o.ToggleKey == nil and o.ToggleUIKeybind ~= nil then
+        local k = o.ToggleUIKeybind
+        if typeof(k) == "EnumItem" then
+            o.ToggleKey = k
+        elseif type(k) == "string" then
+            local ok, v = pcall(function() return Enum.KeyCode[k] end)
+            if ok and v then o.ToggleKey = v end
+        end
+    end
+    -- ShowText = texto del botón flotante
+    if o.ShowText ~= nil then
+        local b = {}
+        for k, v in pairs(o.Button or {}) do b[k] = v end
+        if b.Text == nil then b.Text = tostring(o.ShowText) end
+        o.Button = b
+    end
+    -- ConfigurationSaving = { Enabled, FolderName, FileName }  (se carga con LoadConfiguration())
+    local cs = o.ConfigurationSaving
+    if type(cs) == "table" and cs.Enabled then
+        if o.AutoSave == nil then o.AutoSave = true end
+        if o.AutoLoad == nil then o.AutoLoad = false end
+        if o.ConfigName == nil then o.ConfigName = cs.FileName end
+        if o.ConfigFolder == nil then o.ConfigFolder = cs.FolderName end
+    end
+
+    -- LoadingTitle / LoadingSubtitle activan la pantalla de carga
+    if o.LoadingScreen == nil and (o.LoadingTitle ~= nil or o.LoadingSubtitle ~= nil or o.LoadingDuration ~= nil) then
+        o.LoadingScreen = { Title = o.LoadingTitle, Subtitle = o.LoadingSubtitle, Duration = o.LoadingDuration }
+    end
+    return o
+end
+
 -- ========== Ventana ==========
 function ArceusXLibrary:CreateWindow(opts)
-    opts = opts or {}
+    opts = NormalizeWindowOpts(opts)
     ApplyStyle(opts)
+    if opts.ConfigFolder then self.ConfigFolder = tostring(opts.ConfigFolder) end
     self.Animations = opts.Animations ~= false
     self.AutoNotify = opts.AutoNotify == true
     if opts.NotifyPosition then self:SetNotifyPosition(opts.NotifyPosition) end
@@ -1704,7 +2170,11 @@ function ArceusXLibrary:CreateWindow(opts)
         if ks.CornerRadius == nil then ks.CornerRadius = opts.CornerRadius end
         if ks.Animations == nil then ks.Animations = opts.Animations end
         if ks.RGBBorder == nil and ks.RGBBorders == nil then ks.RGBBorder = opts.RGBBorder end
-        if ks.FileName == nil then ks.FileName = "ArceusXV2_Key_" .. cleanTitle .. ".txt" end
+        if ks.FileName == nil then
+            ks.FileName = "ArceusXV2_Key_" .. cleanTitle .. ".txt"
+        elseif not string.find(tostring(ks.FileName), "%.") then
+            ks.FileName = tostring(ks.FileName) .. ".txt"
+        end
         usedKeySettings = ks
         local granted = self:KeySystem(ks)
         if not granted then
@@ -1727,9 +2197,7 @@ function ArceusXLibrary:CreateWindow(opts)
         self:LoadingScreen(ls)
     end
 
-    local theme = {}
-    for k, v in pairs(Themes[opts.Theme or "Dark"]) do theme[k] = v end
-    for k, v in pairs(opts.CustomTheme or {}) do theme[k] = v end
+    local theme = BuildTheme(opts.Theme, opts.CustomTheme)
     self._theme = theme
 
     local gui = Make("ScreenGui", {
@@ -1745,7 +2213,7 @@ function ArceusXLibrary:CreateWindow(opts)
     local topH = hasSub and 40 or 34
     local tabMode = (opts.TabPosition == "Top") and "Top" or "Left"
     local topTabH = 34
-    local iconId = opts.Icon
+    local iconId = NormalizeImage(opts.Icon)
     local hasIcon = iconId ~= nil and iconId ~= ""
     local versionText = opts.Version and tostring(opts.Version) or nil
     local versionW = versionText and (#versionText * 7 + 22) or 0
@@ -1947,10 +2415,12 @@ function ArceusXLibrary:CreateWindow(opts)
     local float = Make("TextButton", {
         Size = UDim2.new(0, bSize, 0, bSize), Position = UDim2.new(0, 10, 0.5, -bSize / 2),
         BackgroundColor3 = bBase, Text = bo.Text or "UI", TextColor3 = bo.TextColor or Color3.new(1, 1, 1),
-        Font = Fonts.Bold, TextSize = math.floor(bSize * 0.45), BorderSizePixel = 0,
+        Font = Fonts.Bold, TextScaled = true, BorderSizePixel = 0,
         AutoButtonColor = false, Visible = bo.Visible ~= false,
     }, gui)
     Round(float, bSize / 2)
+    Make("UITextSizeConstraint", { MaxTextSize = math.floor(bSize * 0.45) }, float)
+    Make("UIPadding", { PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6) }, float)
     local floatScale = Make("UIScale", { Scale = 1 }, float)
     local fStroke = Make("UIStroke", {
         Thickness = bo.BorderThickness or 2.5, Color = Color3.new(1, 1, 1),
@@ -2147,8 +2617,9 @@ function ArceusXLibrary:CreateWindow(opts)
         layoutTop()
     end
     function window:SetIcon(id)
-        hasIcon = id ~= nil and id ~= ""
-        iconLabel.Image = hasIcon and tostring(id) or ""
+        local img = NormalizeImage(id)
+        hasIcon = img ~= nil
+        iconLabel.Image = img or ""
         layoutTop()
     end
     function window:SetVersion(t)
@@ -2378,6 +2849,7 @@ function ArceusXLibrary:CreateWindow(opts)
 
         local tab = { Name = name }
         AddElements(tab, page, theme)
+        AddRayfieldAPI(tab)
 
         if opts.Search then
             local sb = Make("Frame", {
@@ -2418,6 +2890,41 @@ function ArceusXLibrary:CreateWindow(opts)
         table.insert(window.Tabs, tab)
         if #window.Tabs == 1 then select() end
         return tab
+    end
+
+    -- Rayfield: Window:CreateTab(Nombre, Icono)  (Icono = número de imagen; los íconos Lucide se ignoran)
+    function window:CreateTab(name, icon)
+        local ic
+        if type(icon) == "number" and icon ~= 0 then
+            ic = icon
+        elseif type(icon) == "string" and string.find(icon, "rbx") then
+            ic = icon
+        end
+        return window:AddTab(name, ic)
+    end
+
+    -- Rayfield: Window:Prompt({ Title, SubTitle, Content, Actions = { Accept = {Name, Callback}, Deny = {...} } })
+    function window:Prompt(p)
+        p = p or {}
+        local buttons = {}
+        local actions = p.Actions or {}
+        for _, key in ipairs({ "Accept", "Deny" }) do
+            local a = actions[key]
+            if type(a) == "table" then table.insert(buttons, { Text = a.Name or key, Callback = a.Callback }) end
+        end
+        for k, a in pairs(actions) do
+            if k ~= "Accept" and k ~= "Deny" and type(a) == "table" then
+                table.insert(buttons, { Text = a.Name or tostring(k), Callback = a.Callback })
+            end
+        end
+        local content = p.Content or ""
+        local sub = p.SubTitle or p.Subtitle
+        if sub then content = tostring(sub) .. "\n" .. content end
+        return window:Dialog({ Title = p.Title, Content = content, Buttons = #buttons > 0 and buttons or nil })
+    end
+
+    function window:ModifyTheme()
+        warn("[ArceusXLibraryV2] ModifyTheme no se puede usar en tiempo real: usa Theme / CustomTheme en CreateWindow")
     end
 
     function window:Select(name)
@@ -2465,6 +2972,38 @@ function ArceusXLibrary:CreateWindow(opts)
         task.delay(0.7, function() self:Notify(n) end)
     end
 
+    -- ----- Invitación a Discord (Rayfield: Discord = { Enabled, Invite, RememberJoins }) -----
+    local dc = opts.Discord
+    if type(dc) == "table" and dc.Enabled and type(dc.Invite) == "string"
+        and dc.Invite ~= "" and dc.Invite ~= "noinvitelink" then
+        local remember = dc.RememberJoins ~= false
+        local flagFile = "ArceusXV2_Discord_" .. (string.gsub(dc.Invite, "[^%w_]", "")) .. ".txt"
+        local seen = false
+        if remember and isfile then
+            local ok, r = pcall(isfile, flagFile)
+            seen = (ok and r) and true or false
+        end
+        if not seen then
+            task.delay(1.5, function()
+                if not window.Gui.Parent then return end
+                window:Dialog({
+                    Title = L("discord_title"), Content = L("discord_text"),
+                    Buttons = {
+                        { Text = L("discord_copy"), Callback = function()
+                            local copied = Utils.Copy("https://discord.gg/" .. dc.Invite)
+                            if remember and writefile then pcall(writefile, flagFile, "1") end
+                            ArceusXLibrary:Notify({
+                                Title = "Discord", Type = "Success", Theme = theme, Duration = 4,
+                                Content = copied and L("key_copied") or ("discord.gg/" .. dc.Invite),
+                            })
+                        end },
+                        { Text = L("discord_later") },
+                    },
+                })
+            end)
+        end
+    end
+
     -- ----- Config automática (AutoLoad / AutoSave) -----
     local cfgName = window.ConfigName
     local loadDelay = opts.AutoLoadDelay or 0.6
@@ -2504,6 +3043,22 @@ function ArceusXLibrary:Destroy()
     if self._notifGui then pcall(function() self._notifGui:Destroy() end) end
     self.Windows, self._connections, self.Flags = {}, {}, {}
     self._notifGui, self._notifHolder = nil, nil
+end
+
+-- ========== API de Rayfield (nivel librería) ==========
+function ArceusXLibrary:LoadConfiguration()
+    local w = self.Windows[#self.Windows]
+    if w then return self:LoadConfig(w.ConfigName, true) end
+    return false
+end
+
+function ArceusXLibrary:SetVisibility(state)
+    for _, w in ipairs(self.Windows) do w:Toggle(state) end
+end
+
+function ArceusXLibrary:IsVisible()
+    local w = self.Windows[1]
+    return w ~= nil and w._visible
 end
 
 return ArceusXLibrary
